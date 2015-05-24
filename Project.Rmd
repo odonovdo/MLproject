@@ -1,0 +1,65 @@
+---
+title: "MLproject"
+
+---
+
+#Load in files
+
+```{r}
+library(caret);library(rpart);library(rattle);library(rpart)
+
+TrainUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+TrainData <- read.csv(TrainUrl)
+
+TestUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+Testing <- read.csv(TestUrl)
+```
+
+
+
+```{r}
+Structure <- str(TrainData)##look at to exame data
+##Remove Index (X), Nmaes and Time stamps
+TrainData <- TrainData [ ,-c(1:5)]
+
+## Find features that were incorrecty Classified
+ColClass <- sapply(TrainData[,-155],function(x)class(x))
+ColFactors <- as.vector(which(ColClass=="factor"))
+
+summary(TrainData[,ColFactors])
+TrainData[,ColFactors] <- lapply(TrainData[,ColFactors],function(x)as.numeric(x))
+
+##look for features that have a lot of NA values
+NaFeatures <- as.vector(apply(TrainData,2,function(x)sum(is.na(x))))
+
+## remove features that contin mainly na and have very little variance
+plot(NaFeatures)
+abline(a=mean(NaFeatures),b=0,col="red")
+TrainData <- TrainData[,-which(NaFeatures > mean(NaFeatures))]
+
+### Find feature that are unlikely to be important ie little variance 
+NotImprtant <- nearZeroVar(TrainData,saveMetrics = TRUE)
+NotImpIndex <- which(NotImprtant$nzv=="TRUE")
+
+for (i in 1: length(NotImpIndex)){
+     tabNotImp <- table(TrainData[,NotImpIndex[i]])
+      print(tabNotImp[tabNotImp>2])
+}
+Training <- TrainData[,-NotImpIndex]
+```
+a lot of an values
+
+```{r}
+Structure <- str(TrainData)##look at to exame data
+##Remove Index (X), Nmaes and Time stamps
+TrainData <- TrainData [ ,-c(1:5)]
+```
+
+
+You can also embed plots, for example:
+
+```{r, echo=FALSE}
+plot(cars)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
