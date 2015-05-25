@@ -2,9 +2,7 @@
 title: "MLproject"
 
 ---
-
 #Load in files
-
 ```{r}
 library(caret);library(rpart);library(rattle);library(rpart)
 
@@ -14,20 +12,17 @@ TrainData <- read.csv(TrainUrl)
 TestUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
 Testing <- read.csv(TestUrl)
 ```
-
-
-Clean Up data 
+#Clean data (Add correct Class to Features, Remove NA and Features that arent important)
 
 ```{r}
 Structure <- str(TrainData)##look at to exame data
 ##Remove Index (X), Nmaes and Time stamps
 TrainData <- TrainData [ ,-c(1:5)]
-
 ## Find features that were incorrecty Classified
 ColClass <- sapply(TrainData[,-155],function(x)class(x))
 ColFactors <- as.vector(which(ColClass=="factor"))
 
-summary(TrainData[,ColFactors])
+DataSum <- summary(TrainData[,ColFactors])
 TrainData[,ColFactors] <- lapply(TrainData[,ColFactors],function(x)as.numeric(x))
 
 ##look for features that have a lot of NA values
@@ -50,8 +45,7 @@ for (i in 1: length(NotImpIndex)){
 Training <- TrainData[,-NotImpIndex]
 ```
 
-
-Creat training, Test and Validation data
+#Create a training, Test and Validation data-set
 
 ```{r}
 index <- createDataPartition(Training$classe,p=0.6,list=FALSE)
@@ -62,7 +56,7 @@ validation <- TestSet[-index2,]
 TestSet <- TestSet[index2,]
 ```
 
-Create first model- A classification tree
+# Model 1-- A classification tree
 ```{r}
 ## fit a classification tree
 Modfit1 <- train(classe~.,method = "rpart",data = TrainSet)
@@ -71,9 +65,9 @@ fit1Results <- confusionMatrix(TestSet$classe,preTest1)
 fit1Results[c(2:3)]##Accuracy quite poor Bad!
 plot(preTest1)
 ```
-Model one not very good!
+This Model is not very good large out of sample error!
 
-try Cross validation 
+try Cross validation to improve accuracy
 ```{r}
 ## Use Cross Valadation instead of bootstrap?
 fitControl <- trainControl(method="cv", number=3, verboseIter=F)
@@ -83,9 +77,9 @@ fit2Results <- confusionMatrix(TestSet$classe,preTest2)
 fit2Results[c(2:3)]##Accuracy still very poor no difference!
 plot(preTest2)
 ```
-Results exact same !! Time to try a different model
+Results similar !! will stick with CV but will use dfferent models to try to improve.
 
-Fitting  a logistic / Multinomial Model
+# Model 3 -Fitting  a logistic / Multinomial Model
 
 ```{r}
 fitControl <- trainControl(method="cv", number=3, verboseIter=F)
@@ -95,10 +89,10 @@ fit3Results <- confusionMatrix(TestSet$classe,preTest3)
 plot(preTest3)
 fit3Results[c(2:3)]##Accuracy still okay but getting better!
 ```
-Accuray a little better, stil not great, wiillfit an alternative model
+Out of sample error is a little better, still not great, will try and fit an alternative model
 
 
-Trying a Linear Discriminant Analysis
+# Model 4 -Linear Discriminant Analysis (LDA)
 ```{r}
 fitControl <- trainControl(method="cv", number=3, verboseIter=F)
 Modfit4 <- train(classe~.,method = "lda",data = TrainSet, trControl = fitControl)
@@ -107,7 +101,9 @@ fit4Results <- confusionMatrix(TestSet$classe,preTest4)
 plot(preTest4)
 fit4Results[c(2:3)]
 ```
-Accuracy still poor but getting better!
+Out of sample error still poor but getting better!
+
+# Model 5 - Classification tree (ct)
 ```{r}
 ##fit a logitModel
 fitControl <- trainControl(method="cv", number=3, verboseIter=F)
@@ -117,6 +113,9 @@ fit5Results <- confusionMatrix(TestSet$classe,preTest5)
 plot(preTest5)
 fit5Results[c(2:3)]##Accuracy good, pure luck on model selection!
 ```
+Out of sample error good!
+
+#Model 6 (stacking)
 Investigate if model selection/ ensembling is wort exploring
 ```{r}
 library("caretEnsemble")
@@ -124,15 +123,18 @@ model_list <- caretList(classe~., data=TrainSet,
 methodList=c('ctree', 'rpart',"lda","multinom"),trControl = fitControl)
 modelCor(resamples(model_list))
 ```
-some models are correlated, lets pick the best accuray 
-class(preTest5)
+some models are highly correlated, lets use all models anyway!
+
 ```{r}
-Results <-    rbind(fit2Results,fit3Results,fit4Results,fit5Results,Results[,2])
-
-str(Results)
+predDF <- data.frame(preTest2,preTest3,preTest4,preTest5,classe=TestSet$classe)
+comModFit <- train(classe~.,method="rf",data=predDF)
+comPred <- predict(comModFit,predDF)
+fit6Results <- confusionMatrix(TestSet$classe,comPred)
+fit6Results[c(2:3)]
 ```
+Accuracy best so far!
 
-Now try randomforest; tried not to!
+#Model 7 - Now try randomforest; (tried not to)!
 ```{r}
 fitControl <- trainControl(method="cv", number=3, verboseIter=F)
 Modfit7 <- train(classe~.,method = "rf",data = TrainSet, trControl = fitControl)
@@ -140,27 +142,27 @@ preTest7 <- predict(Modfit7,newdata = TestSet)
 fit7Results <- confusionMatrix(TestSet$classe,preTest7)
 fit7Results[c(2:3)]##Accuracy the best!
 ```
+Out of sample error very good!!
+Use Model on Validation dataset
+```{r}
+preTestVal <- predict(Modfit7,newdata = validation)
+fitValResults <- confusionMatrix(validation$classe,preTest7)
+ValAccuracy <- fitValResults[c(2:3)]##Accuracy the best!
+OutSample <- (1-ValAccuracy$overall[1])*100
+```
+Out of sample Error is very Low
 
-
-
+# Model Selection 
+Will Use Random Forest as the Prediction model
 
 ```{r}
+Testing <- Testing[,colnames(Testing)%in%colnames(Training)]
+
 predFinal <- predict(Modfit7, Testing, type = "raw")
-
-match(colnames(Training),colnames(Testing))
-confusionMatrix(Testing$classe,predFinal)[3]
-Testing <- Testing[,colnames(Testing)%in%colnames(Training)]
-
-confusionMatrix(Testing$classe,predFinal)[3]
-Testing <- Testing[,colnames(Testing)%in%colnames(Training)]
 ```
 
-
+Ready to try on test set!!
 ```{r}
-ColClass2 <- sapply(TrainSet[,-54],function(x)class(x))
-
-Testing <- as.data.frame(Testing,col)
-
 pml_write_files = function(x){
       n = length(x)
       for(i in 1:n){
@@ -170,30 +172,4 @@ pml_write_files = function(x){
 }
 pml_write_files(predFinal)
 
-
-
 ```
-
-
-
-predDF <- data.frame(preTest2,preTest3,preTest4,preTest5,classe=TestSet$classe)
-comModFit <- train(classe~.,method="rf",data=predDF)
-comPred <- predict(comModFit,predDF)
-fit6Results <- confusionMatrix(TestSet$classe,comPred)
-fit6Results[c(2:3)]##Accuracy best so far!
-```
-
-
-```{r}
-
-```
-
-
-
-You can also embed plots, for example:
-
-```{r, echo=FALSE}
-plot(cars)
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
