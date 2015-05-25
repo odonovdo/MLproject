@@ -16,6 +16,7 @@ Testing <- read.csv(TestUrl)
 ```
 
 
+Clean Up data 
 
 ```{r}
 Structure <- str(TrainData)##look at to exame data
@@ -41,19 +42,152 @@ TrainData <- TrainData[,-which(NaFeatures > mean(NaFeatures))]
 NotImprtant <- nearZeroVar(TrainData,saveMetrics = TRUE)
 NotImpIndex <- which(NotImprtant$nzv=="TRUE")
 
+NotImPlIST <- list()
 for (i in 1: length(NotImpIndex)){
      tabNotImp <- table(TrainData[,NotImpIndex[i]])
-      print(tabNotImp[tabNotImp>2])
+      NotImPlIST[[i]] <- tabNotImp[tabNotImp>2]
 }
 Training <- TrainData[,-NotImpIndex]
 ```
-a lot of an values
+
+
+Creat training, Test and Validation data
 
 ```{r}
-Structure <- str(TrainData)##look at to exame data
-##Remove Index (X), Nmaes and Time stamps
-TrainData <- TrainData [ ,-c(1:5)]
+index <- createDataPartition(Training$classe,p=0.6,list=FALSE)
+TrainSet <- Training[index,]
+TestSet <-  Training[-index,]
+index2 <- createDataPartition(TestSet$classe,p=0.6,list=FALSE)
+validation <- TestSet[-index2,]
+TestSet <- TestSet[index2,]
 ```
+
+Create first model- A classification tree
+```{r}
+## fit a classification tree
+Modfit1 <- train(classe~.,method = "rpart",data = TrainSet)
+preTest1 <- predict(Modfit1,newdata = TestSet)
+fit1Results <- confusionMatrix(TestSet$classe,preTest1)
+fit1Results[c(2:3)]##Accuracy quite poor Bad!
+plot(preTest1)
+```
+Model one not very good!
+
+try Cross validation 
+```{r}
+## Use Cross Valadation instead of bootstrap?
+fitControl <- trainControl(method="cv", number=3, verboseIter=F)
+Modfit2 <- train(classe~.,method = "rpart",data = TrainSet, trControl = fitControl)
+preTest2 <- predict(Modfit2,newdata = TestSet)
+fit2Results <- confusionMatrix(TestSet$classe,preTest2)
+fit2Results[c(2:3)]##Accuracy still very poor no difference!
+plot(preTest2)
+```
+Results exact same !! Time to try a different model
+
+Fitting  a logistic / Multinomial Model
+
+```{r}
+fitControl <- trainControl(method="cv", number=3, verboseIter=F)
+Modfit3 <- train(classe~.,method = "multinom",data = TrainSet, trControl = fitControl)
+preTest3 <- predict(Modfit3,newdata = TestSet)
+fit3Results <- confusionMatrix(TestSet$classe,preTest3)
+plot(preTest3)
+fit3Results[c(2:3)]##Accuracy still okay but getting better!
+```
+Accuray a little better, stil not great, wiillfit an alternative model
+
+
+Trying a Linear Discriminant Analysis
+```{r}
+fitControl <- trainControl(method="cv", number=3, verboseIter=F)
+Modfit4 <- train(classe~.,method = "lda",data = TrainSet, trControl = fitControl)
+preTest4 <- predict(Modfit4,newdata = TestSet)
+fit4Results <- confusionMatrix(TestSet$classe,preTest4)
+plot(preTest4)
+fit4Results[c(2:3)]
+```
+Accuracy still poor but getting better!
+```{r}
+##fit a logitModel
+fitControl <- trainControl(method="cv", number=3, verboseIter=F)
+Modfit5 <- train(classe~.,method = "ctree",data = TrainSet, trControl = fitControl)
+preTest5 <- predict(Modfit5,newdata = TestSet)
+fit5Results <- confusionMatrix(TestSet$classe,preTest5)
+plot(preTest5)
+fit5Results[c(2:3)]##Accuracy good, pure luck on model selection!
+```
+Investigate if model selection/ ensembling is wort exploring
+```{r}
+library("caretEnsemble")
+model_list <- caretList(classe~., data=TrainSet,
+methodList=c('ctree', 'rpart',"lda","multinom"),trControl = fitControl)
+modelCor(resamples(model_list))
+```
+some models are correlated, lets pick the best accuray 
+class(preTest5)
+```{r}
+Results <-    rbind(fit2Results,fit3Results,fit4Results,fit5Results,Results[,2])
+
+str(Results)
+```
+
+Now try randomforest; tried not to!
+```{r}
+fitControl <- trainControl(method="cv", number=3, verboseIter=F)
+Modfit7 <- train(classe~.,method = "rf",data = TrainSet, trControl = fitControl)
+preTest7 <- predict(Modfit7,newdata = TestSet)
+fit7Results <- confusionMatrix(TestSet$classe,preTest7)
+fit7Results[c(2:3)]##Accuracy the best!
+```
+
+
+
+
+```{r}
+predFinal <- predict(Modfit7, Testing, type = "raw")
+
+match(colnames(Training),colnames(Testing))
+confusionMatrix(Testing$classe,predFinal)[3]
+Testing <- Testing[,colnames(Testing)%in%colnames(Training)]
+
+confusionMatrix(Testing$classe,predFinal)[3]
+Testing <- Testing[,colnames(Testing)%in%colnames(Training)]
+```
+
+
+```{r}
+ColClass2 <- sapply(TrainSet[,-54],function(x)class(x))
+
+Testing <- as.data.frame(Testing,col)
+
+pml_write_files = function(x){
+      n = length(x)
+      for(i in 1:n){
+            filename = paste0("problem_id_",i,".txt")
+            write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+      }
+}
+pml_write_files(predFinal)
+
+
+
+```
+
+
+
+predDF <- data.frame(preTest2,preTest3,preTest4,preTest5,classe=TestSet$classe)
+comModFit <- train(classe~.,method="rf",data=predDF)
+comPred <- predict(comModFit,predDF)
+fit6Results <- confusionMatrix(TestSet$classe,comPred)
+fit6Results[c(2:3)]##Accuracy best so far!
+```
+
+
+```{r}
+
+```
+
 
 
 You can also embed plots, for example:
